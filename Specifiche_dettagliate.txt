@@ -1,0 +1,63 @@
+Progetto ANAWS: Controller in una SDN per la gestione di indirizzi anycast (load balancing)
+
+
+SPECIFICHE:
+
+1-
+	Il controller è implementato tramite Floodlight. Espone un'interfaccia web con tre funzionalità
+		● Registrare un server su un indirizzo anycast;
+		● Rimuovere un server da un gruppo anycast;
+		● Presentare una lista dei partecipanti ad un gruppo anycast.
+	
+2-	
+	Gli host offrono dei servizi e possono gestire al più MAX_NUM richieste al minuto.
+
+3-	
+	L'indirizzo anycast implementato tramite indirizzo virtuale, il quale viene tradotto dal controllore in uno degli indirizzi IP fisici.
+
+
+4-	
+	Il controller tiene conto del carico degli host e traduce l'indirizzo virtuale nel seguente modo:
+		● La destinazione deve essere quanto più vicino possibile alla sorgente della richiesta (numero di hop);
+		● A parità di distanza viene scelto come destinazione l'host con minore carico. La quantità di carico è espressa tramite la grandezza "# di richieste al minuto";
+		● A parità di carico la scelta dell'host è casuale.
+
+5-	
+	Il controllore non può inviare ad un host richieste se questo ha raggiunto la condizione del punto 2.
+	Se tutti gli host sono saturi la richiesta viene scartata.
+											
+6-
+	Gli host devono essere registrati su un indirizzo anycast in base al servizio offerto. Durante la fase di registrazione il manager della rete invia l'indirizzo anycast su cui vuole registrare un host e l'indirizzo IP fisico di quest'ultimo. Il controller installa una regola fissa per permettere la traduzione dell'indirizzo sorgente della risposta da indirizzo IP fisico ad indirizzo anycast (per la risposta al client).
+	Se uno stesso server fornisce più servizi su indirizzi anycast differenti, benchè l'indirizzo IP fisico sia il medesimo, la porta sorgente è differente, pertanto la porta è necessaria per la traduzione.
+	Nello specifico, il manager della rete, utilizza un messaggio HTTP con metodo POST e formato JSON del tipo {"subscribe", "service": [ {"IPaddr1", "AnyAddr1"}, {"IPaddr2", "AnyAddr2"}, ...]}.
+	
+7-
+	Il manager della rete può effettuare l'operazione di unsubscribe. In questo caso il controller provvede a cancellare tutte le regole associate ad un servizio.
+	Nello specifico utilizza un messaggio HTTP con metodo POST e formato JSON del tipo {"unsubscribe", "service": [ {"IPaddr1", "AnyAddr1"}, {"IPaddr2", "AnyAddr2"}, ...]}.
+	
+8-
+	Il manager della rete può richiedere può richiedere la lista degli indirizzi IP fisici associati ad un indirizzo anycast utilizzando un messaggio HTTP con metodo GET  del tipo "list:AnyAddr".
+
+9-
+	Il controllore mantiene una tabella che associa ad ogni gruppo anycast gli indirizzi degli host che si sono registrati.
+	Inoltre, per ogni host viene mantenuta una tabella che tiene conto delle richieste al minuto ricevute.
+	Le entry sono così fatte:
+		A- Associazione Indirizzo anycast - Indirizzo IP fisico - Porta
+		B- Associazione Indirizzo IP fisico - request counter - timestamp
+		  
+10-
+	Lo switch installa la regola del controller. Per ogni richiesta in arrivo
+		● inoltra alla destinazione
+		● inoltra l'header al controller per aggiornare la tabella 7.B.
+	Il controllore deve invalidare la regola al raggiungimento di MAX_NUM richieste al minuto in modo che lo switch smetta di effettuare l'inoltro automatico. Al momento dell'invalidazione il controller non installa una nuova regola (non è necessario scegliere immediatamente un altro server perchè il server attuale potrebbe essersi liberato all'arrivo di una nuova richiesta).
+						
+
+	
+   
+NOTE:
+
+1-
+	Per non aggiungere complessità agli host la richiesta di servizio è emulata tramite iperf a indirizzi anycast. Il controllore elabora le risposte ai messaggi iperf in modo da stampare su terminale quale server è stato scelto per fornire il servizio.
+	
+2- 
+	Si assume che a servizi diversi corrispondano indirizzi anycast diversi e non sia possibile avere servizi diversi sulla stessa porta (non occorre la traduzione delle porte).
